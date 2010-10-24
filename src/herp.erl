@@ -35,7 +35,7 @@
 
 -include("epcap_net.hrl").
 
--export([start/0, start/1, stop/0, proxy/2]).
+-export([start/0, start/1, stop/0, bridge/2]).
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
         terminate/2, code_change/3]).
@@ -49,25 +49,32 @@
     }).
 
 
-proxy(MAC, Packet) when is_binary(Packet) ->
-    gen_server:call(?MODULE, {packet, MAC, Packet}).
-
-stop() ->
-    gen_server:call(?MODULE, stop).
-
+%%--------------------------------------------------------------------
+%%% Exports
+%%--------------------------------------------------------------------
 start() ->
     [Dev] = packet:default_interface(),
     start(Dev).
 start(Dev) ->
     start_link(Dev).
 
+stop() ->
+    gen_server:call(?MODULE, stop).
+
 start_link(Dev) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Dev], []).
 
+bridge(MAC, Packet) when is_binary(Packet) ->
+    gen_server:call(?MODULE, {packet, MAC, Packet}).
+
+
+%%--------------------------------------------------------------------
+%%% Callbacks
+%%--------------------------------------------------------------------
 init([Dev]) ->
     {ok, PL} = inet:ifget(Dev, [addr, hwaddr]),
 
-    {ok, GW, _} = packet:gateway(Dev),
+    {ok, {M1,M2,M3,M4,M5,M6}, _} = packet:gateway(Dev),
 
     IP = proplists:get_value(addr, PL),
     MAC = list_to_binary(proplists:get_value(hwaddr, PL)),
@@ -80,13 +87,12 @@ init([Dev]) ->
         i = Ifindex,
         ip = IP,
         mac = MAC,
-        gw = tuple_to_binary(GW)
+        gw = <<M1,M2,M3,M4,M5,M6>>
     },
 
     spawn_link(fun() -> sniff(Socket, State) end),
 
     {ok, State}.
-
 
 handle_call({packet, DstMAC, Packet}, _From, #state{
         mac = MAC,
@@ -122,6 +128,10 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
+%%--------------------------------------------------------------------
+%%% Read ARP packets from the network and send them to the
+%%% gen_server
+%%--------------------------------------------------------------------
 sniff(Socket, State) ->
     case procket:recvfrom(Socket, 65535) of
         nodata ->
@@ -143,13 +153,14 @@ filter([#ether{}, #ipv4{daddr = DA}, _, _], Data, #state{gw = GW}) ->
         {M1,M2,M3,M4,M5,M6} -> <<M1,M2,M3,M4,M5,M6>>
     end,
     {#ether{}, Packet} = epcap_net:ether(Data),
-    ?MODULE:proxy(MAC, Packet);
+    bridge(MAC, Packet);
 filter(_, _, _) ->
     ok.
 
-tuple_to_binary({M1,M2,M3,M4,M5,M6}) ->
-    <<M1,M2,M3,M4,M5,M6>>.
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 machex(MAC) when is_binary(MAC) ->
     lists:flatten(string:join([ io_lib:format("~.16B", [N]) || <<N>> <= MAC ], ":")).
 
