@@ -111,7 +111,7 @@ handle_call({packet, DstMAC, Packet}, _From, #state{
     {reply, ok, State};
 
 handle_call(stop, _From, State) ->
-    {stop, normal, ok, State}.
+    {stop, shutdown, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
