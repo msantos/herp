@@ -97,8 +97,7 @@ init([Dev]) ->
 handle_call({packet, DstMAC, Packet}, _From, #state{
         mac = MAC,
         s = Socket,
-        i = Ifindex
-    } = State) ->
+        i = Ifindex} = State) ->
 
     Ether = epcap_net:ether(#ether{
             dhost = DstMAC,
@@ -138,24 +137,29 @@ sniff(Socket, State) ->
             timer:sleep(10),
             sniff(Socket, State);
         {ok, Data} ->
-            P = epcap_net:decapsulate(Data),
-            filter(P, Data, State),
+            {#ether{} = Ether, Packet} = epcap_net:ether(Data),
+            filter(Ether, Packet, State),
             sniff(Socket, State);
         Error ->
             error_logger:error_report(Error)
     end.
 
-filter([#ether{}, #ipv4{saddr = SA, daddr = DA}, _, _], _, #state{ip = IP}) when IP == SA; IP == DA ->
+filter(#ether{shost = MAC}, _, #state{mac = MAC}) ->
     ok;
-filter([#ether{}, #ipv4{daddr = DA}, _, _], Data, #state{gw = GW}) ->
-    MAC = case packet:arplookup(DA) of
+filter(#ether{type = ?ETH_P_IP}, Packet, State) ->
+    {#ipv4{daddr = DA}, _} = epcap_net:ipv4(Packet),
+    filter1(DA, Packet, State);
+filter(_, _, _) ->
+    ok.
+
+filter1(IP, _, #state{ip = IP}) ->
+    ok;
+filter1(IP, Packet, #state{gw = GW}) ->
+    MAC = case packet:arplookup(IP) of
         false -> GW;
         {M1,M2,M3,M4,M5,M6} -> <<M1,M2,M3,M4,M5,M6>>
     end,
-    {#ether{}, Packet} = epcap_net:ether(Data),
-    bridge(MAC, Packet);
-filter(_, _, _) ->
-    ok.
+    bridge(MAC, Packet).
 
 
 %%--------------------------------------------------------------------
