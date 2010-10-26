@@ -1,3 +1,23 @@
 
-Erlang layer 2 bridge.
+herp re-writes ethernet headers, thereby acting as a user space bridge.
+Right now, herp works on switched networks and forwards any packets that
+have been sent to the host from ARP spoofing.
+
+In the future, herp will probably become a real, although slow, bridge.
+
+
+EXPORTS
+
+start() -> {ok, PID}
+start(Device) -> {ok, PID}
+
+    Types   Device = string()
+
+    Device is the network interface name.
+
+
+HOW TO USE IT
+
+> herp:start(). % start up the bridge
+> farp:start().
 
