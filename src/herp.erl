@@ -106,7 +106,7 @@ handle_call({packet, DstMAC, Packet}, _From, #state{
         }),
 
     error_logger:info_report([{src, machex(MAC)}, {dst, machex(DstMAC)}]),
-    packet:send(Socket, Ifindex, list_to_binary([Ether, Packet])),
+    packet:send(Socket, Ifindex, <<Ether/binary, Packet/binary>>),
     {reply, ok, State};
 
 handle_call(stop, _From, State) ->
