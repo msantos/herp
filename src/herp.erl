@@ -133,7 +133,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 sniff(Socket, State) ->
     case procket:recvfrom(Socket, 65535) of
-        nodata ->
+        {error, eagain} ->
             timer:sleep(10),
             sniff(Socket, State);
         {ok, Data} ->
