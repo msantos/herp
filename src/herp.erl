@@ -33,7 +33,7 @@
 
 -define(SERVER, ?MODULE).
 
--include("epcap_net.hrl").
+-include("pkt.hrl").
 
 -export([start/0, start/1, stop/0, bridge/2]).
 -export([start_link/1]).
@@ -99,7 +99,7 @@ handle_call({packet, DstMAC, Packet}, _From, #state{
         s = Socket,
         i = Ifindex} = State) ->
 
-    Ether = epcap_net:ether(#ether{
+    Ether = pkt:ether(#ether{
             dhost = DstMAC,
             shost = MAC,
             type = ?ETH_P_IP
@@ -137,7 +137,7 @@ sniff(Socket, State) ->
             timer:sleep(10),
             sniff(Socket, State);
         {ok, Data} ->
-            {#ether{} = Ether, Packet} = epcap_net:ether(Data),
+            {#ether{} = Ether, Packet} = pkt:ether(Data),
             filter(Ether, Packet, State),
             sniff(Socket, State);
         Error ->
@@ -147,7 +147,7 @@ sniff(Socket, State) ->
 filter(#ether{shost = MAC}, _, #state{mac = MAC}) ->
     ok;
 filter(#ether{type = ?ETH_P_IP}, Packet, State) ->
-    {#ipv4{daddr = DA}, _} = epcap_net:ipv4(Packet),
+    {#ipv4{daddr = DA}, _} = pkt:ipv4(Packet),
     filter1(DA, Packet, State);
 filter(_, _, _) ->
     ok.
