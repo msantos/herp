@@ -90,7 +90,7 @@ init([Dev]) ->
         gw = <<M1,M2,M3,M4,M5,M6>>
     },
 
-    spawn_link(fun() -> sniff(Socket, State) end),
+    spawn_link(fun() -> sniff(State) end),
 
     {ok, State}.
 
@@ -131,15 +131,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Read ARP packets from the network and send them to the
 %%% gen_server
 %%--------------------------------------------------------------------
-sniff(Socket, State) ->
+sniff(#state{s = Socket} = State) ->
     case procket:recvfrom(Socket, 65535) of
         {error, eagain} ->
             timer:sleep(10),
-            sniff(Socket, State);
+            sniff(State);
         {ok, Data} ->
             {#ether{} = Ether, Packet} = pkt:ether(Data),
             filter(Ether, Packet, State),
-            sniff(Socket, State);
+            sniff(State);
         Error ->
             error_logger:error_report(Error)
     end.
