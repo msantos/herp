@@ -35,12 +35,13 @@
 
 -include("pkt.hrl").
 
--export([start/0, start/1, stop/0, bridge/2]).
+-export([start/0, start/1, stop/0]).
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
         terminate/2, code_change/3]).
 
 -record(state, {
+        port,
         s,              % PF_PACKET socket
         i,              % IF Index
         gw,             % Gateway MAC address
@@ -64,9 +65,6 @@ stop() ->
 start_link(Dev) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Dev], []).
 
-bridge(MAC, Packet) when is_binary(Packet) ->
-    gen_server:call(?MODULE, {packet, MAC, Packet}).
-
 
 %%--------------------------------------------------------------------
 %%% Callbacks
@@ -82,38 +80,33 @@ init([Dev]) ->
     {ok, Socket} = packet:socket(?ETH_P_IP),
     Ifindex = packet:ifindex(Socket, Dev),     
 
-    State = #state{
+    Port = open_port({fd, Socket, Socket}, [stream, binary]),
+
+    {ok, #state{
+        port = Port,
         s = Socket,
         i = Ifindex,
         ip = IP,
         mac = MAC,
         gw = <<M1,M2,M3,M4,M5,M6>>
-    },
-
-    spawn_link(fun() -> sniff(State) end),
-
-    {ok, State}.
-
-handle_call({packet, DstMAC, Packet}, _From, #state{
-        mac = MAC,
-        s = Socket,
-        i = Ifindex} = State) ->
-
-    Ether = pkt:ether(#ether{
-            dhost = DstMAC,
-            shost = MAC,
-            type = ?ETH_P_IP
-        }),
-
-    error_logger:info_report([{src, machex(MAC)}, {dst, machex(DstMAC)}]),
-    packet:send(Socket, Ifindex, <<Ether/binary, Packet/binary>>),
-    {reply, ok, State};
+    }}.
 
 handle_call(stop, _From, State) ->
     {stop, shutdown, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+%%--------------------------------------------------------------------
+%%% Port communication
+%%--------------------------------------------------------------------
+handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
+    {#ether{} = Ether, Packet} = pkt:ether(Data),
+    case filter(Ether, Packet, State) of
+        ok -> ok;
+        {MAC, Packet} -> bridge(MAC, Packet, State)
+    end,
+    {noreply, State};
 
 % WTF?
 handle_info(Info, State) ->
@@ -131,19 +124,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Read ARP packets from the network and send them to the
 %%% gen_server
 %%--------------------------------------------------------------------
-sniff(#state{s = Socket} = State) ->
-    case procket:recvfrom(Socket, 65535) of
-        {error, eagain} ->
-            timer:sleep(10),
-            sniff(State);
-        {ok, Data} ->
-            {#ether{} = Ether, Packet} = pkt:ether(Data),
-            filter(Ether, Packet, State),
-            sniff(State);
-        Error ->
-            error_logger:error_report(Error)
-    end.
-
 filter(#ether{shost = MAC}, _, #state{mac = MAC}) ->
     ok;
 filter(#ether{type = ?ETH_P_IP}, Packet, State) ->
@@ -159,7 +139,20 @@ filter1(IP, Packet, #state{gw = GW}) ->
         false -> GW;
         {M1,M2,M3,M4,M5,M6} -> <<M1,M2,M3,M4,M5,M6>>
     end,
-    bridge(MAC, Packet).
+    {MAC, Packet}.
+
+bridge(DstMAC, Packet, #state{
+        mac = MAC,
+        s = Socket,
+        i = Ifindex}) ->
+    Ether = pkt:ether(#ether{
+            dhost = DstMAC,
+            shost = MAC,
+            type = ?ETH_P_IP
+        }),
+    error_logger:info_report([{src, machex(MAC)}, {dst, machex(DstMAC)}]),
+    packet:send(Socket, Ifindex, <<Ether/binary, Packet/binary>>),
+    ok.
 
 
 %%--------------------------------------------------------------------
