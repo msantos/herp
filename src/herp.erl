@@ -1,4 +1,4 @@
-%% Copyright (c) 2010, Michael Santos <michael.santos@gmail.com>
+%% Copyright (c) 2010-2012, Michael Santos <michael.santos@gmail.com>
 %% All rights reserved.
 %%
 %% Redistribution and use in source and binary forms, with or without
@@ -33,7 +33,7 @@
 
 -define(SERVER, ?MODULE).
 
--include("pkt.hrl").
+-include_lib("pkt/include/pkt.hrl").
 
 -export([start/0, start/1, stop/0]).
 -export([start_link/1]).
@@ -128,13 +128,13 @@ filter(#ether{shost = MAC}, _, #state{mac = MAC}) ->
     ok;
 filter(#ether{type = ?ETH_P_IP}, Packet, State) ->
     {#ipv4{daddr = DA}, _} = pkt:ipv4(Packet),
-    filter1(DA, Packet, State);
+    filter_1(DA, Packet, State);
 filter(_, _, _) ->
     ok.
 
-filter1(IP, _, #state{ip = IP}) ->
+filter_1(IP, _, #state{ip = IP}) ->
     ok;
-filter1(IP, Packet, #state{gw = GW}) ->
+filter_1(IP, Packet, #state{gw = GW}) ->
     MAC = case packet:arplookup(IP) of
         false -> GW;
         {M1,M2,M3,M4,M5,M6} -> <<M1,M2,M3,M4,M5,M6>>
@@ -160,4 +160,3 @@ bridge(DstMAC, Packet, #state{
 %%--------------------------------------------------------------------
 machex(MAC) when is_binary(MAC) ->
     lists:flatten(string:join([ io_lib:format("~.16B", [N]) || <<N>> <= MAC ], ":")).
-
